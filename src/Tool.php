@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace EchoLabs\Prism;
 
+use ArgumentCountError;
 use Closure;
+use EchoLabs\Prism\Exceptions\PrismException;
+use InvalidArgumentException;
+use Throwable;
+use TypeError;
 
 class Tool
 {
@@ -78,9 +83,16 @@ class Tool
         return $this->description;
     }
 
-    /** @param string|int|float $args */
+    /**
+     * @param  string|int|float  $args
+     * @throws PrismException|Throwable
+     */
     public function handle(...$args): string
     {
-        return call_user_func($this->fn, ...$args);
+        try {
+            return call_user_func($this->fn, ...$args);
+        } catch (ArgumentCountError|InvalidArgumentException|TypeError $e) {
+            throw PrismException::invalidParameterInTool($this->name, $e);
+        }
     }
 }

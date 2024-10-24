@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use EchoLabs\Prism\Exceptions\PrismException;
 use EchoLabs\Prism\Facades\Tool as ToolFacade;
 use EchoLabs\Prism\Tool;
 
@@ -82,4 +83,16 @@ it('can use an invokeable', function (): void {
 
     expect($searchTool->handle('What time is the event?'))
         ->toBe('The event is at 3pm eastern');
+});
+
+it('can throw a custom exception for invalid parameters', function (): void {
+    $searchTool = (new Tool)
+        ->as('search')
+        ->for('useful for searching current data')
+        ->using(fn (string $string): string => $string);
+
+    $this->expectException(PrismException::class);
+    $this->expectExceptionMessage('Invalid parameters for tool : search');
+
+    $searchTool->handle([]);
 });
