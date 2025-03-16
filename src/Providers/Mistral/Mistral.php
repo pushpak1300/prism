@@ -12,6 +12,7 @@ use Prism\Prism\Embeddings\Request as EmbeddingRequest;
 use Prism\Prism\Embeddings\Response as EmbeddingResponse;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Mistral\Handlers\Embeddings;
+use Prism\Prism\Providers\Mistral\Handlers\Structured;
 use Prism\Prism\Providers\Mistral\Handlers\Text;
 use Prism\Prism\Structured\Request as StructuredRequest;
 use Prism\Prism\Structured\Response as StructuredResponse;
@@ -40,7 +41,14 @@ readonly class Mistral implements Provider
     #[\Override]
     public function structured(StructuredRequest $request): StructuredResponse
     {
-        throw PrismException::unsupportedProviderAction(__METHOD__, class_basename($this));
+        $handler = new Structured(
+            $this->client(
+                $request->clientOptions(),
+                $request->clientRetry()
+            )
+        );
+
+        return $handler->handle($request);
     }
 
     #[\Override]
