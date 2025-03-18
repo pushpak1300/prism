@@ -207,7 +207,7 @@ export default {
         {
           name: "Groq",
           text: Supported,
-          structured: Unsupported,
+          structured: Supported,
           embeddings: Planned,
           image: Supported,
           tools: Supported,
