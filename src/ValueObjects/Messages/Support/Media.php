@@ -208,6 +208,30 @@ class Media
         return $this->mimeType;
     }
 
+    /**
+     * Get a file resource suitable for HTTP multipart uploads
+     *
+     * @return resource
+     */
+    public function resource(): mixed
+    {
+        if ($this->localPath) {
+            return fopen($this->localPath, 'r');
+        }
+
+        if ($this->url) {
+            $this->fetchUrlContent();
+
+            return $this->resource();
+        }
+
+        if ($this->rawContent || $this->base64) {
+            return $this->createStreamFromContent($this->rawContent());
+        }
+
+        throw new InvalidArgumentException('Cannot create resource from media');
+    }
+
     public function fetchUrlContent(): void
     {
         if (! $this->url) {
@@ -227,5 +251,17 @@ class Media
         }
 
         $this->rawContent = $content;
+    }
+
+    /**
+     * @return resource
+     */
+    protected function createStreamFromContent(string $content)
+    {
+        $stream = fopen('php://temp', 'r+');
+        fwrite($stream, $content);
+        rewind($stream);
+
+        return $stream;
     }
 }
