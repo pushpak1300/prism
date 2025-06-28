@@ -213,10 +213,15 @@ class Media
      *
      * @return resource
      */
-    public function resource(): mixed
+    public function resource()
     {
         if ($this->localPath) {
-            return fopen($this->localPath, 'r');
+            $resource = fopen($this->localPath, 'r');
+            if ($resource === false) {
+                throw new InvalidArgumentException("Cannot open file: {$this->localPath}");
+            }
+
+            return $resource;
         }
 
         if ($this->url) {
@@ -256,9 +261,17 @@ class Media
     /**
      * @return resource
      */
-    protected function createStreamFromContent(string $content)
+    protected function createStreamFromContent(?string $content)
     {
+        if ($content === null) {
+            throw new InvalidArgumentException('Cannot create stream from null content');
+        }
+
         $stream = fopen('php://temp', 'r+');
+        if ($stream === false) {
+            throw new InvalidArgumentException('Cannot create temporary stream');
+        }
+
         fwrite($stream, $content);
         rewind($stream);
 

@@ -17,7 +17,7 @@ class UserMessage implements Message
     use HasProviderOptions;
 
     /**
-     * @param  array<int, Media>  $additionalContent
+     * @param  array<int, Audio|Document|Image|OpenAIFile|Text>  $additionalContent
      * @param  array<string, mixed>  $additionalAttributes
      */
     public function __construct(

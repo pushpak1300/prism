@@ -51,6 +51,10 @@ class PendingRequest
 
     protected function toTextToSpeechRequest(): TextToSpeechRequest
     {
+        if (! is_string($this->input)) {
+            throw new \InvalidArgumentException('Text-to-speech requires string input');
+        }
+
         return new TextToSpeechRequest(
             model: $this->model,
             providerKey: $this->providerKey(),
@@ -63,6 +67,10 @@ class PendingRequest
 
     protected function toSpeechToTextRequest(): SpeechToTextRequest
     {
+        if (! ($this->input instanceof Audio)) {
+            throw new \InvalidArgumentException('Speech-to-text requires Audio input');
+        }
+
         return new SpeechToTextRequest(
             model: $this->model,
             providerKey: $this->providerKey(),
