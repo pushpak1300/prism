@@ -150,8 +150,8 @@ describe('Speech-to-Text', function (): void {
             ->asText();
 
         expect($response->text)->not->toBeNull();
-        expect($response->text->hasText())->toBeTrue();
-        expect($response->text->text)->toBe('Hello, this is a test transcription.');
+        expect($response->text)->not->toBeEmpty();
+        expect($response->text)->toBe('Hello, this is a test transcription.');
 
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.openai.com/v1/audio/transcriptions');
     });
@@ -175,7 +175,7 @@ describe('Speech-to-Text', function (): void {
             ])
             ->asText();
 
-        expect($response->text->text)->toBe('Bonjour, ceci est un test.');
+        expect($response->text)->toBe('Bonjour, ceci est un test.');
 
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.openai.com/v1/audio/transcriptions');
     });
@@ -216,7 +216,7 @@ describe('Speech-to-Text', function (): void {
             ])
             ->asText();
 
-        expect($response->text->text)->toBe('The quick brown fox jumps over the lazy dog.');
+        expect($response->text)->toBe('The quick brown fox jumps over the lazy dog.');
         expect($response->usage)->not->toBeNull();
         expect($response->usage->completionTokens)->toBe(12);
 
@@ -240,7 +240,7 @@ describe('Speech-to-Text', function (): void {
             ])
             ->asText();
 
-        expect($response->text->text)->toBe('Temperature controlled transcription.');
+        expect($response->text)->toBe('Temperature controlled transcription.');
 
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.openai.com/v1/audio/transcriptions');
     });
@@ -283,7 +283,7 @@ describe('Speech-to-Text', function (): void {
             ->withInput($audioFile)
             ->asText();
 
-        expect($response->text->text)->toBe('Simple transcription without usage data.');
+        expect($response->text)->toBe('Simple transcription without usage data.');
         expect($response->usage)->toBeNull();
     });
 });
@@ -360,7 +360,7 @@ describe('GeneratedAudio Value Object', function (): void {
     });
 });
 
-describe('GeneratedText Value Object', function (): void {
+describe('Speech-to-Text Response', function (): void {
     it('can handle complex transcription responses', function (): void {
         Http::fake([
             'api.openai.com/v1/audio/transcriptions' => Http::response([
@@ -382,8 +382,8 @@ describe('GeneratedText Value Object', function (): void {
             ->withProviderOptions(['response_format' => 'verbose_json'])
             ->asText();
 
-        expect($response->text->text)->toBe('Complex transcription with metadata.');
-        expect($response->text->hasText())->toBeTrue();
+        expect($response->text)->toBe('Complex transcription with metadata.');
+        expect($response->text)->not->toBeEmpty();
         expect($response->additionalContent['language'])->toBe('en');
         expect($response->additionalContent['duration'])->toBe(5.2);
         expect($response->additionalContent['segments'])->toHaveCount(2);

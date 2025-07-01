@@ -316,7 +316,7 @@ $response = Prism::audio()
     ->withInput($audioFile)
     ->asText();
 
-echo "Transcription: " . $response->text->text;
+echo "Transcription: " . $response->text;
 ```
 #### Language Detection
 
@@ -380,7 +380,7 @@ $response = Prism::audio()
     ])
     ->asText();
 
-file_put_contents('subtitles.srt', $response->text->text);
+file_put_contents('subtitles.srt', $response->text);
 
 // VTT format subtitles
 $response = Prism::audio()
@@ -391,7 +391,7 @@ $response = Prism::audio()
     ])
     ->asText();
 
-file_put_contents('subtitles.vtt', $response->text->text);
+file_put_contents('subtitles.vtt', $response->text);
 ```
 
 #### Context and Prompts
