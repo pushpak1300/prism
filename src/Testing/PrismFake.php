@@ -27,7 +27,7 @@ use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\ValueObjects\EmbeddingsUsage;
 use Prism\Prism\ValueObjects\GeneratedAudio;
 use Prism\Prism\ValueObjects\GeneratedImage;
-use Prism\Prism\ValueObjects\GeneratedText;
+
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\Usage;
 
@@ -134,7 +134,7 @@ class PrismFake extends Provider
         $this->recorded[] = $request;
 
         return $this->nextAudioTextResponse() ?? new AudioTextResponse(
-            text: new GeneratedText('fake transcribed text'),
+            text: 'fake transcribed text',
             usage: new Usage(0, 0),
             additionalContent: [],
         );

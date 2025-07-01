@@ -41,7 +41,7 @@ $response = Prism::audio()
     ->withInput($audioFile)
     ->asText();
 
-echo "Transcription: " . $response->text->text;
+echo "Transcription: " . $response->text;
 ```
 
 ## Provider Support
@@ -91,7 +91,7 @@ $response = Prism::audio()
     ->asText();
 
 // Access the transcription
-echo $response->text->text;
+echo $response->text;
 ```
 
 ## Working with Audio Files
@@ -168,7 +168,7 @@ $response = Prism::audio()
 
 // Access the transcription
 $text = $response->text;
-echo "Transcription: " . $text->text;
+echo "Transcription: " . $text;
 
 // Check token usage
 if ($response->usage) {
@@ -265,7 +265,7 @@ $response = Prism::text()
     ->withMessages([
         new UserMessage('', [
             new Text('User asked: '),
-            new Text($transcription->text->text),
+            new Text($transcription->text),
             new Text(' - Please provide a detailed response.')
         ])
     ])
@@ -350,7 +350,6 @@ use Prism\Prism\Testing\PrismFake;
 use Prism\Prism\Audio\AudioResponse;
 use Prism\Prism\Audio\TextResponse;
 use Prism\Prism\ValueObjects\GeneratedAudio;
-use Prism\Prism\ValueObjects\GeneratedText;
 
 test('can generate text-to-speech', function () {
     $fakeAudio = new AudioResponse(
@@ -373,7 +372,7 @@ test('can generate text-to-speech', function () {
 
 test('can transcribe speech-to-text', function () {
     $fakeTranscription = new TextResponse(
-        text: new GeneratedText('This is a fake transcription')
+        text: 'This is a fake transcription'
     );
     
     Prism::fake([$fakeTranscription]);
@@ -385,7 +384,7 @@ test('can transcribe speech-to-text', function () {
         ->withInput($audioFile)
         ->asText();
 
-    expect($response->text->text)->toBe('This is a fake transcription');
+            expect($response->text)->toBe('This is a fake transcription');
 });
 ```
 

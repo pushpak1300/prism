@@ -14,7 +14,6 @@ use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\SpeechToTextRequestMapper;
 use Prism\Prism\Providers\OpenAI\Maps\TextToSpeechRequestMapper;
 use Prism\Prism\ValueObjects\GeneratedAudio;
-use Prism\Prism\ValueObjects\GeneratedText;
 use Prism\Prism\ValueObjects\Usage;
 
 class Audio
@@ -62,9 +61,7 @@ class Audio
         }
 
         return new TextResponse(
-            text: new GeneratedText(
-                text: $data['text'] ?? ''
-            ),
+            text: $data['text'] ?? '',
             usage: $usage,
             additionalContent: $data,
         );
