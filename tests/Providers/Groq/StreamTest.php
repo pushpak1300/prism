@@ -19,7 +19,7 @@ beforeEach(function (): void {
 });
 
 it('can generate text with a basic stream', function (): void {
-    FixtureResponse::fakeStreamResponses('chat/completions', 'groq/stream-basic-text');
+    FixtureResponse::fakeStreamResponses('openai/v1/chat/completions', 'groq/stream-basic-text');
 
     $response = Prism::text()
         ->using(Provider::Groq, 'llama-3.1-70b-versatile')
@@ -43,7 +43,7 @@ it('can generate text with a basic stream', function (): void {
 });
 
 it('can generate text using tools with streaming', function (): void {
-    FixtureResponse::fakeStreamResponses('chat/completions', 'groq/stream-with-tools');
+    FixtureResponse::fakeStreamResponses('openai/v1/chat/completions', 'groq/stream-with-tools');
 
     $tools = [
         Tool::as('weather')
@@ -97,7 +97,7 @@ it('can generate text using tools with streaming', function (): void {
 });
 
 it('handles maximum tool call depth exceeded', function (): void {
-    FixtureResponse::fakeStreamResponses('chat/completions', 'groq/stream-with-tools');
+    FixtureResponse::fakeStreamResponses('openai/v1/chat/completions', 'groq/stream-with-tools');
 
     $tools = [
         Tool::as('weather')
@@ -192,6 +192,7 @@ it('respects system prompts in the requests', function (): void {
 });
 
 it('verifies correct request structure for streaming', function (): void {
+    FixtureResponse::fakeStreamResponses('openai/v1/chat/completions', 'groq/stream-basic-text');
     Http::fake([
         '*' => Http::response(
             "data: {\"choices\": [{\"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"delta\": {\"content\": \" world\"}}, {\"done\": true}]}\n\n",
@@ -204,7 +205,7 @@ it('verifies correct request structure for streaming', function (): void {
         ->using(Provider::Groq, 'llama-3.1-70b-versatile')
         ->withPrompt('Test')
         ->asStream()
-        ->current(); // Just trigger the first request
+        ->current();
 
     Http::assertSent(function ($request): bool {
         $data = $request->data();
@@ -214,16 +215,20 @@ it('verifies correct request structure for streaming', function (): void {
         expect($data['model'])->toBe('llama-3.1-70b-versatile');
         expect($data['messages'])->toBeArray();
         expect($data['messages'][0]['role'])->toBe('user');
-        expect($data['messages'][0]['content'])->toBe('Test');
+        expect($data['messages'][0]['content'])->toBe([['type' => 'text', 'text' => 'Test']]);
 
         return true;
     });
 });
 
 it('can handle chunk types correctly', function (): void {
-    FixtureResponse::fakeStreamResponses('chat/completions', 'groq/stream-with-tools');
+    FixtureResponse::fakeStreamResponses('openai/v1/chat/completions', 'groq/stream-with-tools');
 
     $tools = [
+        Tool::as('search')
+            ->for('A search tool')
+            ->withStringParameter('query', 'The search query')
+            ->using(fn (string $query): string => "Search results for {$query}"),
         Tool::as('weather')
             ->for('A weather tool')
             ->withStringParameter('city', 'The city name')
@@ -233,6 +238,7 @@ it('can handle chunk types correctly', function (): void {
     $response = Prism::text()
         ->using(Provider::Groq, 'llama-3.1-70b-versatile')
         ->withTools($tools)
+        ->withMaxSteps(3)
         ->withPrompt('Get weather for Detroit')
         ->asStream();
 
