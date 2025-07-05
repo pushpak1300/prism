@@ -226,13 +226,6 @@ if ($image->hasUrl()) {
 
 OpenAI provides comprehensive audio processing capabilities through their TTS (Text-to-Speech) and Whisper (Speech-to-Text) models. Prism supports all of OpenAI's audio models with their full feature sets.
 
-### Supported Models
-
-| Model | Type | Description |
-|-------|------|-------------|
-| `tts-1` | Text-to-Speech | Standard quality TTS |
-| `tts-1-hd` | Text-to-Speech | High definition TTS |
-| `whisper-1` | Speech-to-Text | Advanced speech recognition |
 
 ### Text-to-Speech
 
@@ -244,8 +237,9 @@ Convert text into natural-sounding speech with various voice options:
 use Prism\Prism\Prism;
 
 $response = Prism::audio()
-    ->using('openai', 'tts-1')
+    ->using('openai', 'gpt-4o-mini-tts')
     ->withInput('Hello, welcome to our application!')
+    ->withVoice('alloy')
     ->asAudio();
 
 // Save the audio file
@@ -253,27 +247,14 @@ $audioData = base64_decode($response->audio->base64);
 file_put_contents('welcome.mp3', $audioData);
 ```
 
-#### Voice Selection
-
-OpenAI offers six distinct voices with different characteristics:
-
-```php
-$response = Prism::audio()
-    ->using('openai', 'tts-1')
-    ->withInput('This is a test of the voice selection feature.')
-    ->withProviderOptions([
-        'voice' => 'alloy',    // Available voices: alloy, echo, fable, onyx, nova, shimmer
-    ])
-    ->asAudio();
-```
-
+\
 #### High-Definition Audio
 
-For higher quality audio output, use the `tts-1-hd` model:
+For higher quality audio output, use the model:
 
 ```php
 $response = Prism::audio()
-    ->using('openai', 'tts-1-hd')
+    ->using('openai', 'gpt-4o-mini-tts')
     ->withInput('This is high-quality audio generation.')
     ->withProviderOptions([
         'voice' => 'nova',
@@ -288,7 +269,7 @@ Control the output format and quality:
 
 ```php
 $response = Prism::audio()
-    ->using('openai', 'tts-1')
+    ->using('openai', 'gpt-4o-mini-tts')
     ->withInput('Testing different audio formats.')
     ->withProviderOptions([
         'voice' => 'echo',
@@ -299,6 +280,8 @@ $response = Prism::audio()
 
 echo "Audio type: " . $response->audio->getMimeType();
 ```
+
+For more information on the available options, please refer to the [OpenAI API documentation](https://platform.openai.com/docs/guides/text-to-speech).
 
 ### Speech-to-Text
 
@@ -451,3 +434,4 @@ if ($audio->size() > 25 * 1024 * 1024) { // 25 MB
 }
 ```
 
+For more information on the available options, please refer to the [OpenAI API documentation](https://platform.openai.com/docs/guides/speech-to-text).
