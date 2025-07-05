@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Prism\Prism\Structured;
 
+use Illuminate\Http\Client\RequestException;
 use Prism\Prism\Concerns\ConfiguresClient;
 use Prism\Prism\Concerns\ConfiguresModels;
 use Prism\Prism\Concerns\ConfiguresProviders;
@@ -36,7 +37,13 @@ class PendingRequest
 
     public function asStructured(): Response
     {
-        return $this->provider->structured($this->toRequest());
+        $request = $this->toRequest();
+
+        try {
+            return $this->provider->structured($request);
+        } catch (RequestException $e) {
+            $this->provider->handleRequestException($request->model(), $e);
+        }
     }
 
     public function toRequest(): Request
@@ -57,6 +64,7 @@ class PendingRequest
 
         return new Request(
             model: $this->model,
+            providerKey: $this->providerKey(),
             systemPrompts: $this->systemPrompts,
             prompt: $this->prompt,
             messages: $messages,

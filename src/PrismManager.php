@@ -7,7 +7,6 @@ namespace Prism\Prism;
 use Closure;
 use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
-use Prism\Prism\Contracts\Provider;
 use Prism\Prism\Enums\Provider as ProviderEnum;
 use Prism\Prism\Providers\Anthropic\Anthropic;
 use Prism\Prism\Providers\DeepSeek\DeepSeek;
@@ -16,6 +15,8 @@ use Prism\Prism\Providers\Groq\Groq;
 use Prism\Prism\Providers\Mistral\Mistral;
 use Prism\Prism\Providers\Ollama\Ollama;
 use Prism\Prism\Providers\OpenAI\OpenAI;
+use Prism\Prism\Providers\OpenRouter\OpenRouter;
+use Prism\Prism\Providers\Provider;
 use Prism\Prism\Providers\VoyageAI\VoyageAI;
 use Prism\Prism\Providers\XAI\XAI;
 use RuntimeException;
@@ -193,6 +194,17 @@ class PrismManager
         return new Gemini(
             url: $config['url'],
             apiKey: $config['api_key'],
+        );
+    }
+
+    /**
+     * @param  array<string, string>  $config
+     */
+    protected function createOpenrouterProvider(array $config): OpenRouter
+    {
+        return new OpenRouter(
+            apiKey: $config['api_key'] ?? '',
+            url: $config['url'] ?? 'https://openrouter.ai/api/v1',
         );
     }
 }

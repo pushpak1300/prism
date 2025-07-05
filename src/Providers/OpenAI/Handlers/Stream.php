@@ -6,7 +6,6 @@ namespace Prism\Prism\Providers\OpenAI\Handlers;
 
 use Generator;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
@@ -16,22 +15,23 @@ use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismChunkDecodeException;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismRateLimitedException;
-use Prism\Prism\Providers\OpenAI\Concerns\ProcessesRateLimits;
-use Prism\Prism\Providers\OpenAI\Maps\ChatMessageMap;
 use Prism\Prism\Providers\OpenAI\Maps\FinishReasonMap;
+use Prism\Prism\Providers\OpenAI\Maps\MessageMap;
 use Prism\Prism\Providers\OpenAI\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\OpenAI\Maps\ToolMap;
 use Prism\Prism\Text\Chunk;
 use Prism\Prism\Text\Request;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
+use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ToolCall;
+use Prism\Prism\ValueObjects\Usage;
 use Psr\Http\Message\StreamInterface;
 use Throwable;
 
 class Stream
 {
-    use CallsTools, ProcessesRateLimits;
+    use CallsTools;
 
     public function __construct(protected PendingRequest $client) {}
 
@@ -50,37 +50,63 @@ class Stream
      */
     protected function processStream(Response $response, Request $request, int $depth = 0): Generator
     {
-        // Prevent infinite recursion with tool calls
-        if ($depth >= $request->maxSteps()) {
-            throw new PrismException('Maximum tool call chain depth exceeded');
-        }
         $text = '';
         $toolCalls = [];
+        $reasoningItems = [];
 
         while (! $response->getBody()->eof()) {
             $data = $this->parseNextDataLine($response->getBody());
 
-            // Skip empty data or DONE markers
             if ($data === null) {
                 continue;
             }
 
-            // Process tool calls
-            if ($this->hasToolCalls($data)) {
-                $toolCalls = $this->extractToolCalls($data, $toolCalls);
+            if ($data['type'] === 'error') {
+                $this->handleErrors($data, $request);
+            }
+
+            if ($data['type'] === 'response.created') {
+                yield new Chunk(
+                    text: '',
+                    finishReason: null,
+                    meta: new Meta(
+                        id: $data['response']['id'] ?? null,
+                        model: $data['response']['model'] ?? null,
+                    ),
+                    chunkType: ChunkType::Meta,
+                );
 
                 continue;
             }
 
-            // Handle tool call completion
-            if ($this->mapFinishReason($data) === FinishReason::ToolCalls) {
-                yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
+            if ($this->hasReasoningSummaryDelta($data)) {
+                $reasoningDelta = $this->extractReasoningSummaryDelta($data);
 
-                return;
+                if ($reasoningDelta !== '') {
+                    yield new Chunk(
+                        text: $reasoningDelta,
+                        finishReason: null,
+                        chunkType: ChunkType::Thinking
+                    );
+                }
+
+                continue;
             }
 
-            // Process regular content
-            $content = data_get($data, 'choices.0.delta.content', '') ?? '';
+            if ($this->hasReasoningItems($data)) {
+                $reasoningItems = $this->extractReasoningItems($data, $reasoningItems);
+
+                continue;
+            }
+
+            if ($this->hasToolCalls($data)) {
+                $toolCalls = $this->extractToolCalls($data, $toolCalls, $reasoningItems);
+
+                continue;
+            }
+
+            $content = $this->extractOutputTextDelta($data);
+
             $text .= $content;
 
             $finishReason = $this->mapFinishReason($data);
@@ -89,11 +115,28 @@ class Stream
                 text: $content,
                 finishReason: $finishReason !== FinishReason::Unknown ? $finishReason : null
             );
+
+            if (data_get($data, 'type') === 'response.completed') {
+                yield new Chunk(
+                    text: '',
+                    usage: new Usage(
+                        promptTokens: data_get($data, 'response.usage.input_tokens'),
+                        completionTokens: data_get($data, 'response.usage.output_tokens'),
+                        cacheReadInputTokens: data_get($data, 'response.usage.input_tokens_details.cached_tokens'),
+                        thoughtTokens: data_get($data, 'response.usage.output_tokens_details.reasoning_tokens')
+                    ),
+                    chunkType: ChunkType::Meta,
+                );
+            }
+        }
+
+        if ($toolCalls !== []) {
+            yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
         }
     }
 
     /**
-     * @return array<string, mixed>|null Parsed JSON data or null if line should be skipped
+     * @return array<string, mixed>|null
      */
     protected function parseNextDataLine(StreamInterface $stream): ?array
     {
@@ -119,21 +162,46 @@ class Stream
     /**
      * @param  array<string, mixed>  $data
      * @param  array<int, array<string, mixed>>  $toolCalls
+     * @param  array<int, array<string, mixed>>  $reasoningItems
      * @return array<int, array<string, mixed>>
      */
-    protected function extractToolCalls(array $data, array $toolCalls): array
+    protected function extractToolCalls(array $data, array $toolCalls, array $reasoningItems = []): array
     {
-        foreach (data_get($data, 'choices.0.delta.tool_calls', []) as $index => $toolCall) {
-            if ($name = data_get($toolCall, 'function.name')) {
-                $toolCalls[$index]['name'] = $name;
-                $toolCalls[$index]['arguments'] = '';
-                $toolCalls[$index]['id'] = data_get($toolCall, 'id');
+        $type = data_get($data, 'type', '');
+
+        if ($type === 'response.output_item.added' && data_get($data, 'item.type') === 'function_call') {
+            $index = (int) data_get($data, 'output_index', count($toolCalls));
+
+            $toolCalls[$index]['id'] = data_get($data, 'item.id');
+            $toolCalls[$index]['call_id'] = data_get($data, 'item.call_id');
+            $toolCalls[$index]['name'] = data_get($data, 'item.name');
+            $toolCalls[$index]['arguments'] = '';
+
+            // Associate with the most recent reasoning item if available
+            if ($reasoningItems !== []) {
+                $latestReasoning = end($reasoningItems);
+                $toolCalls[$index]['reasoning_id'] = $latestReasoning['id'];
+                $toolCalls[$index]['reasoning_summary'] = $latestReasoning['summary'] ?? [];
             }
 
-            $arguments = data_get($toolCall, 'function.arguments');
+            return $toolCalls;
+        }
 
-            if (! is_null($arguments)) {
-                $toolCalls[$index]['arguments'] .= $arguments;
+        if ($type === 'response.function_call_arguments.delta') {
+            // continue for now, only needed if we want to support streaming argument chunks
+        }
+
+        if ($type === 'response.function_call_arguments.done') {
+            $callId = data_get($data, 'item_id');
+            $arguments = data_get($data, 'arguments', '');
+
+            foreach ($toolCalls as &$call) {
+                if (($call['id'] ?? null) === $callId) {
+                    if ($arguments !== '') {
+                        $call['arguments'] = $arguments;
+                    }
+                    break;
+                }
             }
         }
 
@@ -169,8 +237,13 @@ class Stream
         $request->addMessage(new AssistantMessage($text, $toolCalls));
         $request->addMessage(new ToolResultMessage($toolResults));
 
-        $nextResponse = $this->sendRequest($request);
-        yield from $this->processStream($nextResponse, $request, $depth + 1);
+        $depth++;
+
+        if ($depth < $request->maxSteps()) {
+            $nextResponse = $this->sendRequest($request);
+
+            yield from $this->processStream($nextResponse, $request, $depth);
+        }
     }
 
     /**
@@ -183,9 +256,12 @@ class Stream
     {
         return collect($toolCalls)
             ->map(fn ($toolCall): ToolCall => new ToolCall(
-                data_get($toolCall, 'id'),
-                data_get($toolCall, 'name'),
-                data_get($toolCall, 'arguments'),
+                id: data_get($toolCall, 'id'),
+                name: data_get($toolCall, 'name'),
+                arguments: data_get($toolCall, 'arguments'),
+                resultId: data_get($toolCall, 'call_id'),
+                reasoningId: data_get($toolCall, 'reasoning_id'),
+                reasoningSummary: data_get($toolCall, 'reasoning_summary', []),
             ))
             ->toArray();
     }
@@ -195,7 +271,45 @@ class Stream
      */
     protected function hasToolCalls(array $data): bool
     {
-        return (bool) data_get($data, 'choices.0.delta.tool_calls');
+        $type = data_get($data, 'type', '');
+
+        if (data_get($data, 'item.type') === 'function_call') {
+            return true;
+        }
+
+        return in_array($type, [
+            'response.function_call_arguments.delta',
+            'response.function_call_arguments.done',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function hasReasoningItems(array $data): bool
+    {
+        $type = data_get($data, 'type', '');
+
+        return $type === 'response.output_item.done' && data_get($data, 'item.type') === 'reasoning';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $reasoningItems
+     * @return array<int, array<string, mixed>>
+     */
+    protected function extractReasoningItems(array $data, array $reasoningItems): array
+    {
+        if (data_get($data, 'type') === 'response.output_item.done' && data_get($data, 'item.type') === 'reasoning') {
+            $index = (int) data_get($data, 'output_index', count($reasoningItems));
+
+            $reasoningItems[$index] = [
+                'id' => data_get($data, 'item.id'),
+                'summary' => data_get($data, 'item.summary', []),
+            ];
+        }
+
+        return $reasoningItems;
     }
 
     /**
@@ -203,38 +317,69 @@ class Stream
      */
     protected function mapFinishReason(array $data): FinishReason
     {
-        return FinishReasonMap::map(data_get($data, 'choices.0.finish_reason') ?? '');
+        $eventType = Str::after(data_get($data, 'type'), 'response.');
+        $lastOutputType = data_get($data, 'response.output.{last}.type');
+
+        return FinishReasonMap::map($eventType, $lastOutputType);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function hasReasoningSummaryDelta(array $data): bool
+    {
+        $type = data_get($data, 'type', '');
+
+        return $type === 'response.reasoning_summary_text.delta';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function extractReasoningSummaryDelta(array $data): string
+    {
+        if (data_get($data, 'type') === 'response.reasoning_summary_text.delta') {
+            return (string) data_get($data, 'delta', '');
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function extractOutputTextDelta(array $data): string
+    {
+        if (data_get($data, 'type') === 'response.output_text.delta') {
+            return (string) data_get($data, 'delta', '');
+        }
+
+        return '';
     }
 
     protected function sendRequest(Request $request): Response
     {
-        try {
-            return $this
-                ->client
-                ->withOptions(['stream' => true])
-                ->throw()
-                ->post(
-                    'chat/completions',
-                    array_merge([
-                        'stream' => true,
-                        'model' => $request->model(),
-                        'messages' => (new ChatMessageMap($request->messages(), $request->systemPrompts()))(),
-                        'max_completion_tokens' => $request->maxTokens(),
-                    ], Arr::whereNotNull([
-                        'temperature' => $request->temperature(),
-                        'top_p' => $request->topP(),
-                        'metadata' => $request->providerOptions('metadata'),
-                        'tools' => ToolMap::map($request->tools()),
-                        'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
-                    ]))
-                );
-        } catch (Throwable $e) {
-            if ($e instanceof RequestException && $e->response->getStatusCode() === 429) {
-                throw new PrismRateLimitedException($this->processRateLimits($e->response));
-            }
-
-            throw PrismException::providerRequestError($request->model(), $e);
-        }
+        return $this
+            ->client
+            ->withOptions(['stream' => true])
+            ->post(
+                'responses',
+                array_merge([
+                    'stream' => true,
+                    'model' => $request->model(),
+                    'input' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
+                    'max_output_tokens' => $request->maxTokens(),
+                ], Arr::whereNotNull([
+                    'temperature' => $request->temperature(),
+                    'top_p' => $request->topP(),
+                    'metadata' => $request->providerOptions('metadata'),
+                    'tools' => ToolMap::map($request->tools()),
+                    'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
+                    'previous_response_id' => $request->providerOptions('previous_response_id'),
+                    'truncation' => $request->providerOptions('truncation'),
+                    'reasoning' => $request->providerOptions('reasoning'),
+                ]))
+            );
     }
 
     protected function readLine(StreamInterface $stream): string
@@ -256,5 +401,24 @@ class Stream
         }
 
         return $buffer;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function handleErrors(array $data, Request $request): void
+    {
+        $code = data_get($data, 'error.code', 'unknown_error');
+
+        if ($code === 'rate_limit_exceeded') {
+            throw new PrismRateLimitedException([]);
+        }
+
+        throw new PrismException(sprintf(
+            'Sending to model %s failed. Code: %s. Message: %s',
+            $request->model(),
+            $code,
+            data_get($data, 'error.message', 'No error message provided')
+        ));
     }
 }

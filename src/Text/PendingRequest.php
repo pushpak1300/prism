@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Text;
 
 use Generator;
+use Illuminate\Http\Client\RequestException;
 use Prism\Prism\Concerns\ConfiguresClient;
 use Prism\Prism\Concerns\ConfiguresGeneration;
 use Prism\Prism\Concerns\ConfiguresModels;
@@ -41,7 +42,13 @@ class PendingRequest
 
     public function asText(): Response
     {
-        return $this->provider->text($this->toRequest());
+        $request = $this->toRequest();
+
+        try {
+            return $this->provider->text($request);
+        } catch (RequestException $e) {
+            $this->provider->handleRequestException($request->model(), $e);
+        }
     }
 
     /**
@@ -49,7 +56,17 @@ class PendingRequest
      */
     public function asStream(): Generator
     {
-        return $this->provider->stream($this->toRequest());
+        $request = $this->toRequest();
+
+        try {
+            $chunks = $this->provider->stream($request);
+
+            foreach ($chunks as $chunk) {
+                yield $chunk;
+            }
+        } catch (RequestException $e) {
+            $this->provider->handleRequestException($request->model(), $e);
+        }
     }
 
     public function toRequest(): Request
@@ -66,6 +83,7 @@ class PendingRequest
 
         return new Request(
             model: $this->model,
+            providerKey: $this->providerKey(),
             systemPrompts: $this->systemPrompts,
             prompt: $this->prompt,
             messages: $messages,

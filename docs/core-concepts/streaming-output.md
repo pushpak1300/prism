@@ -2,6 +2,9 @@
 
 Want to show AI responses to your users in real-time? Streaming lets you display text as it's generated, creating a more responsive and engaging user experience.
 
+> [!WARNING]
+> When using Laravel Telescope or other packages that intercept Laravel's HTTP client events, they may consume the stream before Prism can emit the stream chunks. This can cause streaming to appear broken or incomplete. Consider disabling such interceptors when using streaming functionality, or configure them to ignore Prism's HTTP requests.
+
 ## Basic Streaming
 
 At its simplest, streaming works like this:
@@ -32,8 +35,13 @@ foreach ($response as $chunk) {
     // The text fragment in this chunk
     echo $chunk->text;
 
+    if ($chunk->usage) {
+        echo "Prompt tokens: " . $chunk->usage->promptTokens;
+        echo "Completion tokens: " . $chunk->usage->completionTokens;
+    }
+
     // Check if this is the final chunk
-    if ($chunk->finishReason) {
+    if ($chunk->finishReason === FinishReason::Stop) {
         echo "Generation complete: " . $chunk->finishReason->name;
     }
 }

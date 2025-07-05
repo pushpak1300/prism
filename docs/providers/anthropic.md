@@ -58,6 +58,28 @@ use Prism\Prism\ValueObjects\Messages\Support\Document;
 ```
 Note that you must use the `withMessages()` method in order to enable prompt caching, rather than `withPrompt()` or `withSystemPrompt()`.
 
+### Tool result caching
+
+In addition to caching prompts and tool definitions, Prism supports caching tool results. This is particularly useful when making multiple tool calls where results might be referenced repeatedly.
+
+To enable tool result caching, use the `tool_result_cache_type` provider option on your request:
+
+```php
+use Prism\Prism\Prism;
+
+$response = Prism::text()
+    ->using('anthropic', 'claude-3-5-sonnet-20241022')
+    ->withMaxSteps(30)
+    ->withTools([new WeatherTool()])
+    ->withProviderOptions([
+        'tool_result_cache_type' => 'ephemeral'
+    ])
+    ->withPrompt('Check the weather in New York, London, Tokyo, Paris, and Sydney')
+    ->asText();
+```
+
+When multiple tool results are returned, Prism automatically applies caching to only the last result, which caches all preceding results as well. This avoids Anthropic's 4-cache-breakpoint limitation.
+
 Please ensure you read Anthropic's [prompt caching documentation](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching), which covers some important information on e.g. minimum cacheable tokens and message order consistency.
 
 ## Extended thinking
@@ -293,10 +315,47 @@ Note that when using streaming, Anthropic does not stream citations in the same 
 
 ### Structured Output
 
-While Anthropic models don't have native JSON mode or structured output like some providers, Prism implements a robust workaround for structured output:
+While Anthropic models don't have native JSON mode or structured output like some providers, Prism implements two approaches for structured output:
 
+#### Default JSON Mode (Prompt-based)
 - We automatically append instructions to your prompt that guide the model to output valid JSON matching your schema
 - If the response isn't valid JSON, Prism will raise a PrismException
+- This method can sometimes struggle with complex JSON containing quotes, especially in non-English languages
+
+#### Tool Calling Mode (Recommended)
+For more reliable structured output, especially when dealing with complex content or non-English text that may contain quotes, you can enable tool calling mode:
+
+```php
+use Prism\Prism\Enums\Provider;
+use Prism\Prism\Prism;
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
+
+$response = Prism::structured()
+    ->withSchema(new ObjectSchema(
+        'weather_report',
+        'Weather forecast with recommendations',
+        [
+            new StringSchema('forecast', 'The weather forecast'),
+            new StringSchema('recommendation', 'Clothing recommendation')
+        ],
+        ['forecast', 'recommendation']
+    ))
+    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->withPrompt('What\'s the weather like and what should I wear?')
+    ->withProviderOptions(['use_tool_calling' => true])
+    ->asStructured();
+```
+
+**Benefits of tool calling mode:**
+- More reliable JSON parsing, especially with quotes and special characters
+- Better handling of non-English content (Chinese, Japanese, etc.)
+- Reduced risk of malformed JSON responses
+- Compatible with thinking mode
+
+**Limitations:**
+- Cannot be used with citations (citations are not supported in tool calling mode)
+- Slightly more complex under the hood but identical API usage
 
 ## Limitations
 ### Messages

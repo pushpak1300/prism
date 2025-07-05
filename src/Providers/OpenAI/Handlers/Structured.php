@@ -8,7 +8,6 @@ use Illuminate\Support\Arr;
 use Prism\Prism\Enums\StructuredMode;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\OpenAI\Concerns\MapsFinishReason;
-use Prism\Prism\Providers\OpenAI\Concerns\ProcessesRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\MessageMap;
 use Prism\Prism\Providers\OpenAI\Support\StructuredModeResolver;
@@ -20,12 +19,10 @@ use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\Usage;
-use Throwable;
 
 class Structured
 {
     use MapsFinishReason;
-    use ProcessesRateLimits;
     use ValidatesResponse;
 
     protected ResponseBuilder $responseBuilder;
@@ -80,7 +77,6 @@ class Structured
             meta: new Meta(
                 id: data_get($data, 'id'),
                 model: data_get($data, 'model'),
-                rateLimits: $this->processRateLimits($clientResponse)
             ),
             messages: $request->messages(),
             additionalContent: [],
@@ -93,27 +89,23 @@ class Structured
      */
     protected function sendRequest(Request $request, array $responseFormat): ClientResponse
     {
-        try {
-            return $this->client->post(
-                'responses',
-                array_merge([
-                    'model' => $request->model(),
-                    'input' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
-                    'max_output_tokens' => $request->maxTokens(),
-                ], Arr::whereNotNull([
-                    'temperature' => $request->temperature(),
-                    'top_p' => $request->topP(),
-                    'metadata' => $request->providerOptions('metadata'),
-                    'previous_response_id' => $request->providerOptions('previous_response_id'),
-                    'truncation' => $request->providerOptions('truncation'),
-                    'text' => [
-                        'format' => $responseFormat,
-                    ],
-                ]))
-            );
-        } catch (Throwable $e) {
-            throw PrismException::providerRequestError($request->model(), $e);
-        }
+        return $this->client->post(
+            'responses',
+            array_merge([
+                'model' => $request->model(),
+                'input' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
+                'max_output_tokens' => $request->maxTokens(),
+            ], Arr::whereNotNull([
+                'temperature' => $request->temperature(),
+                'top_p' => $request->topP(),
+                'metadata' => $request->providerOptions('metadata'),
+                'previous_response_id' => $request->providerOptions('previous_response_id'),
+                'truncation' => $request->providerOptions('truncation'),
+                'text' => [
+                    'format' => $responseFormat,
+                ],
+            ]))
+        );
     }
 
     protected function handleAutoMode(Request $request): ClientResponse

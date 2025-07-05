@@ -4,9 +4,19 @@ declare(strict_types=1);
 
 namespace Prism\Prism\Providers\Anthropic\Handlers;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 use Prism\Prism\Contracts\PrismRequest;
+use Prism\Prism\Providers\Anthropic\Concerns\ExtractsCitations;
+use Prism\Prism\Providers\Anthropic\Concerns\ExtractsText;
+use Prism\Prism\Providers\Anthropic\Concerns\ExtractsThinking;
+use Prism\Prism\Providers\Anthropic\Concerns\HandlesHttpRequests;
+use Prism\Prism\Providers\Anthropic\Concerns\ProcessesRateLimits;
+use Prism\Prism\Providers\Anthropic\Handlers\StructuredStrategies\AnthropicStructuredStrategy;
+use Prism\Prism\Providers\Anthropic\Handlers\StructuredStrategies\JsonModeStructuredStrategy;
+use Prism\Prism\Providers\Anthropic\Handlers\StructuredStrategies\ToolStructuredStrategy;
 use Prism\Prism\Providers\Anthropic\Maps\FinishReasonMap;
 use Prism\Prism\Providers\Anthropic\Maps\MessageMap;
 use Prism\Prism\Structured\Request as StructuredRequest;
@@ -14,40 +24,39 @@ use Prism\Prism\Structured\Response;
 use Prism\Prism\Structured\ResponseBuilder;
 use Prism\Prism\Structured\Step;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
-use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\Usage;
 
-class Structured extends AnthropicHandlerAbstract
+class Structured
 {
-    /**
-     * @var StructuredRequest
-     */
-    protected PrismRequest $request; // Redeclared for type hinting
+    use ExtractsCitations, ExtractsText, ExtractsThinking, HandlesHttpRequests, ProcessesRateLimits;
 
     protected Response $tempResponse;
 
     protected ResponseBuilder $responseBuilder;
 
-    public function __construct(mixed ...$args)
-    {
-        parent::__construct(...$args);
+    protected AnthropicStructuredStrategy $strategy;
 
+    public function __construct(protected PendingRequest $client, protected StructuredRequest $request)
+    {
         $this->responseBuilder = new ResponseBuilder;
+
+        $this->strategy = $this->request->providerOptions('use_tool_calling') === true
+            ? new ToolStructuredStrategy(request: $request)
+            : new JsonModeStructuredStrategy(request: $request);
     }
 
     public function handle(): Response
     {
-        $this->appendMessageForJsonMode();
+        $this->strategy->appendMessages();
 
         $this->sendRequest();
 
         $this->prepareTempResponse();
 
         $responseMessage = new AssistantMessage(
-            $this->tempResponse->text,
-            [],
-            $this->tempResponse->additionalContent
+            content: $this->tempResponse->text,
+            additionalContent: $this->tempResponse->additionalContent
         );
 
         $this->request->addMessage($responseMessage);
@@ -55,6 +64,7 @@ class Structured extends AnthropicHandlerAbstract
 
         $this->responseBuilder->addStep(new Step(
             text: $this->tempResponse->text,
+            structured: $this->tempResponse->structured ?? [],
             finishReason: $this->tempResponse->finishReason,
             usage: $this->tempResponse->usage,
             meta: $this->tempResponse->meta,
@@ -74,32 +84,38 @@ class Structured extends AnthropicHandlerAbstract
     public static function buildHttpRequestPayload(PrismRequest $request): array
     {
         if (! $request->is(StructuredRequest::class)) {
-            throw new \InvalidArgumentException('Request must be an instance of '.StructuredRequest::class);
+            throw new InvalidArgumentException('Request must be an instance of '.StructuredRequest::class);
         }
 
-        return Arr::whereNotNull([
+        $structuredStrategy = $request->providerOptions('use_tool_calling') === true
+            ? new ToolStructuredStrategy(request: $request)
+            : new JsonModeStructuredStrategy(request: $request);
+
+        $basePayload = Arr::whereNotNull([
             'model' => $request->model(),
             'messages' => MessageMap::map($request->messages(), $request->providerOptions()),
-            'system' => MessageMap::mapSystemMessages($request->systemPrompts()),
+            'system' => MessageMap::mapSystemMessages($request->systemPrompts()) ?: null,
             'thinking' => $request->providerOptions('thinking.enabled') === true
-            ? [
-                'type' => 'enabled',
-                'budget_tokens' => is_int($request->providerOptions('thinking.budgetTokens'))
-                    ? $request->providerOptions('thinking.budgetTokens')
-                    : config('prism.anthropic.default_thinking_budget', 1024),
-            ]
-            : null,
+                ? [
+                    'type' => 'enabled',
+                    'budget_tokens' => is_int($request->providerOptions('thinking.budgetTokens'))
+                        ? $request->providerOptions('thinking.budgetTokens')
+                        : config('prism.anthropic.default_thinking_budget', 1024),
+                ]
+                : null,
             'max_tokens' => $request->maxTokens(),
             'temperature' => $request->temperature(),
             'top_p' => $request->topP(),
         ]);
+
+        return $structuredStrategy->mutatePayload($basePayload);
     }
 
     protected function prepareTempResponse(): void
     {
         $data = $this->httpResponse->json();
 
-        $this->tempResponse = new Response(
+        $baseResponse = new Response(
             steps: new Collection,
             responseMessages: new Collection,
             text: $this->extractText($data),
@@ -121,16 +137,7 @@ class Structured extends AnthropicHandlerAbstract
                 ...$this->extractThinking($data),
             ])
         );
-    }
 
-    protected function appendMessageForJsonMode(): void
-    {
-        $this->request->addMessage(new UserMessage(sprintf(
-            "Respond with ONLY JSON (i.e. not in backticks or a code block, with NO CONTENT outside the JSON) that matches the following schema: \n %s %s",
-            json_encode($this->request->schema()->toArray(), JSON_PRETTY_PRINT),
-            ($this->request->providerOptions()['citations'] ?? false)
-                ? "\n\n Return the JSON as a single text block with a single set of citations."
-                : ''
-        )));
+        $this->tempResponse = $this->strategy->mutateResponse($this->httpResponse, $baseResponse);
     }
 }
