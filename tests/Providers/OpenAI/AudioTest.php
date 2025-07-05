@@ -26,6 +26,7 @@ describe('Text-to-Speech', function (): void {
         $response = Prism::audio()
             ->using('openai', 'tts-1')
             ->withInput('Hello world!')
+            ->withVoice('alloy')
             ->asAudio();
 
         expect($response->audio)->not->toBeNull();
@@ -54,6 +55,7 @@ describe('Text-to-Speech', function (): void {
         $response = Prism::audio()
             ->using('openai', 'tts-1-hd')
             ->withInput('This is high quality audio')
+            ->withVoice('nova')
             ->withProviderOptions([
                 'voice' => 'nova',
                 'response_format' => 'wav',
@@ -85,8 +87,8 @@ describe('Text-to-Speech', function (): void {
         $response = Prism::audio()
             ->using('openai', 'tts-1')
             ->withInput('Custom voice and speed test')
+            ->withVoice('alloy')
             ->withProviderOptions([
-                'voice' => 'alloy',
                 'response_format' => 'opus',
                 'speed' => 1.2,
             ])
@@ -117,8 +119,8 @@ describe('Text-to-Speech', function (): void {
         $response = Prism::audio()
             ->using('openai', 'tts-1')
             ->withInput('Testing echo voice')
+            ->withVoice('echo')
             ->withProviderOptions([
-                'voice' => 'echo',
                 'response_format' => 'mp3',
             ])
             ->asAudio();
@@ -353,6 +355,7 @@ describe('GeneratedAudio Value Object', function (): void {
         $response = Prism::audio()
             ->using('openai', 'tts-1')
             ->withInput('Test audio generation')
+            ->withVoice('alloy')
             ->asAudio();
 
         expect($response->audio->hasBase64())->toBeTrue();

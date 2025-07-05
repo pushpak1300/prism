@@ -25,10 +25,10 @@ class TextToSpeechRequestMapper extends ProviderRequestMapper
         $baseData = [
             'model' => $this->request->model(),
             'input' => $this->request->input(),
+            'voice' => $this->request->voice(),
         ];
 
         $supportedOptions = [
-            'voice' => $providerOptions['voice'] ?? null,
             'response_format' => $providerOptions['response_format'] ?? null,
             'speed' => $providerOptions['speed'] ?? null,
         ];

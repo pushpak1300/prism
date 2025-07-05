@@ -22,6 +22,7 @@ class TextToSpeechRequest implements PrismRequest
         protected string $model,
         protected string $providerKey,
         protected string $input,
+        protected string $voice,
         protected array $clientOptions,
         protected array $clientRetry,
         array $providerOptions = [],
@@ -48,6 +49,11 @@ class TextToSpeechRequest implements PrismRequest
     public function input(): string
     {
         return $this->input;
+    }
+
+    public function voice(): string
+    {
+        return $this->voice;
     }
 
     public function model(): string

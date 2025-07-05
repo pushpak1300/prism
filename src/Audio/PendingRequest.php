@@ -18,11 +18,20 @@ class PendingRequest
     use ConfiguresProviders;
     use HasProviderOptions;
 
-    protected string|Audio $input = '';
+    protected string|Audio $input;
+
+    protected string $voice;
 
     public function withInput(string|Audio $input): self
     {
         $this->input = $input;
+
+        return $this;
+    }
+
+    public function withVoice(string $voice): self
+    {
+        $this->voice = $voice;
 
         return $this;
     }
@@ -59,6 +68,7 @@ class PendingRequest
             model: $this->model,
             providerKey: $this->providerKey(),
             input: $this->input,
+            voice: $this->voice,
             clientOptions: $this->clientOptions,
             clientRetry: $this->clientRetry,
             providerOptions: $this->providerOptions,

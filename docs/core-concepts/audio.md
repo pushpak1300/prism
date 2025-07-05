@@ -15,11 +15,11 @@ use Prism\Prism\Enums\Provider;
 $response = Prism::audio()
     ->using(Provider::OpenAI, 'tts-1')
     ->withInput('Hello, this is a test of text-to-speech functionality.')
+    ->withVoice('alloy')
     ->asAudio();
 
 $audio = $response->audio;
 if ($audio->hasBase64()) {
-    // Save the audio to a file
     file_put_contents('output.mp3', base64_decode($audio->base64));
     echo "Audio saved as: output.mp3";
 }
@@ -62,6 +62,7 @@ Generate speech from text input:
 $response = Prism::audio()
     ->using('openai', 'tts-1')
     ->withInput('Welcome to our application!')
+    ->withVoice('alloy')
     ->asAudio();
 
 $audio = $response->audio;
@@ -136,6 +137,7 @@ echo "File size: " . $audio->size() . " bytes";
 $response = Prism::audio()
     ->using('openai', 'tts-1-hd')
     ->withInput('This is high-quality text-to-speech.')
+    ->withVoice('nova')
     ->asAudio();
 
 // Access the generated audio
@@ -180,20 +182,58 @@ if ($response->usage) {
 print_r($response->additionalContent);
 ```
 
+## Voice Selection
+
+Prism provides a dedicated `withVoice()` method for selecting voices in text-to-speech, making voice selection a first-class citizen in the API:
+
+```php
+$response = Prism::audio()
+    ->using('openai', 'tts-1')
+    ->withInput('Hello, how are you today?')
+    ->withVoice('alloy')  // alloy, echo, fable, onyx, nova, shimmer
+    ->asAudio();
+```
+
+### Available Voices
+
+OpenAI provides six different voices for text-to-speech:
+
+- `alloy` - Neutral, balanced voice
+- `echo` - Clear, warm tone
+- `fable` - Expressive, storytelling voice
+- `onyx` - Deep, authoritative tone
+- `nova` - Young, energetic voice
+- `shimmer` - Gentle, whispering tone
+
+```php
+// Different voices for different contexts
+$announcements = Prism::audio()
+    ->using('openai', 'tts-1')
+    ->withInput('Welcome to our service!')
+    ->withVoice('onyx')  // Authoritative tone
+    ->asAudio();
+
+$stories = Prism::audio()
+    ->using('openai', 'tts-1')
+    ->withInput('Once upon a time...')
+    ->withVoice('fable')  // Storytelling voice
+    ->asAudio();
+```
+
 ## Provider-Specific Options
 
 While Prism provides a consistent API, you can access provider-specific features using the `withProviderOptions()` method.
 
 ### OpenAI Text-to-Speech Options
 
-Customize voice, format, and quality:
+Customize format, speed, and other options:
 
 ```php
 $response = Prism::audio()
     ->using('openai', 'tts-1')
     ->withInput('Hello, how are you today?')
+    ->withVoice('nova')
     ->withProviderOptions([
-        'voice' => 'alloy',                    // alloy, echo, fable, onyx, nova, shimmer
         'response_format' => 'mp3',           // mp3, opus, aac, flac, wav, pcm
         'speed' => 1.0,                       // 0.25 to 4.0
     ])
@@ -275,6 +315,7 @@ $response = Prism::text()
 $speechResponse = Prism::audio()
     ->using('openai', 'tts-1')
     ->withInput($response->text)
+    ->withVoice('alloy')
     ->asAudio();
 ```
 
@@ -326,6 +367,7 @@ try {
     $response = Prism::audio()
         ->using('openai', 'tts-1')
         ->withInput('Text to convert to speech')
+        ->withVoice('alloy')
         ->asAudio();
         
     // Process successful response
@@ -364,6 +406,7 @@ test('can generate text-to-speech', function () {
     $response = Prism::audio()
         ->using('openai', 'tts-1')
         ->withInput('Test audio generation')
+        ->withVoice('alloy')
         ->asAudio();
 
     expect($response->audio->hasBase64())->toBeTrue();
