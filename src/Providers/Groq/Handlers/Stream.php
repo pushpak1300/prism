@@ -68,12 +68,14 @@ class Stream
             // Process tool calls
             if ($this->hasToolCalls($data)) {
                 $toolCalls = $this->extractToolCalls($data, $toolCalls);
+
                 continue;
             }
 
             // Handle tool call completion
             if ($this->mapFinishReason($data) === FinishReason::ToolCalls) {
                 yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
+
                 return;
             }
 
